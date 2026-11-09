@@ -42,6 +42,27 @@ class TrackingTests(SimpleTestCase):
         self.assertEqual(len(suppress([(10,10,100,100),(12,12,100,100)])),1)
 
 class VisionTests(SimpleTestCase):
+    def test_body_scores_filter_people_and_map_coordinates(self):
+        from .body_detection import decode_people
+        predictions=np.zeros((1,8400,85),dtype=np.float32)
+        # Two separate person candidates, one duplicate and one non-person.
+        for index,score in [(810,0.8),(850,0.25),(811,0.7)]:
+            predictions[0,index,4]=1
+            predictions[0,index,5]=score
+            predictions[0,index,2:4]=np.log([4,8])
+        predictions[0,811,0]=-1  # Same center as candidate 810.
+        predictions[0,900,4]=1
+        predictions[0,900,6]=0.99  # Bicycle, excluded from person count.
+        strict=decode_people(predictions,0.5,1280,960,0.5)
+        sensitive=decode_people(predictions,0.5,1280,960,0.2)
+        self.assertEqual(len(strict),1)
+        self.assertEqual(len(sensitive),2)
+        self.assertEqual(strict[0],(128,96,64,128))
+
+    def test_body_threshold_rejects_invalid_numbers(self):
+        for value in [float('nan'),float('inf'),-0.6,1.1]:
+            with self.assertRaises(ValueError):detect_people(np.zeros((240,320,3),np.uint8),'bodies',body_threshold=value)
+
     def test_real_opencv_blank_has_no_faces(self):self.assertEqual(detect_people(decode_frame(blank()),'faces'),[])
     def test_real_opencv_blank_has_no_bodies(self):self.assertEqual(detect_people(decode_frame(blank()),'bodies'),[])
     def test_decode_rejects_non_image(self):
@@ -105,6 +126,16 @@ class APITests(TestCase):
             response=self.client.post(f'/api/sessions/{pk}/frame/',{'sequence':1,'image':file(),'confidence':'0.70'})
         self.assertEqual(response.status_code,200)
         self.assertEqual(detector.call_args.args[2],0.70)
+
+    def test_body_confidence_reaches_detector_and_rejects_invalid_values(self):
+        pk=self.new(mode='bodies').json()['id']
+        with patch('counter.views.detect_people',return_value=[]) as detector:
+            response=self.client.post(f'/api/sessions/{pk}/frame/',{'sequence':1,'image':file(),'body_threshold':'0.20'})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(detector.call_args.args[3],0.20)
+        for value in ['nan','0','-0.3','1.1','invalid']:
+            response=self.client.post(f'/api/sessions/{pk}/frame/',{'sequence':2,'image':file(),'body_threshold':value})
+            self.assertEqual(response.status_code,400)
 
     def new(self,client=None,**kwargs):
         client=client or self.client

@@ -62,8 +62,9 @@ def frame(request,pk):
     begin=time.perf_counter()
     try:
         confidence=float(request.POST.get('confidence','0.85'))
+        body_threshold=float(request.POST.get('body_threshold','0.35'))
         image=decode_frame(upload.read(),1280,960) if s.source=='image' else decode_frame(upload.read())
-        boxes=detect_people(image,s.mode,confidence)
+        boxes=detect_people(image,s.mode,confidence,body_threshold)
     except ValueError as error:return JsonResponse({'error':str(error)},status=400)
     except (cv2.error,RuntimeError):return JsonResponse({'error':'No se pudo ejecutar el detector. Revise el modelo y la instalación de OpenCV.'},status=503)
     now=timezone.now()

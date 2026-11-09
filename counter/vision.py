@@ -5,6 +5,7 @@ from threading import Lock
 import io
 import cv2
 import numpy as np
+from .body_detection import detect_bodies
 from PIL import Image,UnidentifiedImageError
 LOCK=Lock()
 MAX_UPLOAD=2*1024*1024
@@ -28,8 +29,7 @@ def detectors():
     model=Path(__file__).parent/'assets'/'face_detection_yunet_2023mar.onnx'
     if not model.exists():raise RuntimeError('Falta el modelo YuNet incluido con el proyecto.')
     face=cv2.FaceDetectorYN.create(str(model),'',(320,320),score_threshold=0.85,nms_threshold=0.3,top_k=5000)
-    hog=cv2.HOGDescriptor();hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
-    return face,hog
+    return face,None
 def iou(a,b):
     ax,ay,aw,ah=a;bx,by,bw,bh=b
     area=max(0,min(ax+aw,bx+bw)-max(ax,bx))*max(0,min(ay+ah,by+bh)-max(ay,by))
@@ -45,10 +45,12 @@ def fuse(faces,bodies):
         cx,cy=x+w/2,y+h/2
         if not any(bx<=cx<=bx+bw and by<=cy<=by+bh for bx,by,bw,bh in bodies):result.append((x,y,w,h))
     return suppress(result)
-def detect_people(frame,mode,confidence=0.85):
+def detect_people(frame,mode,confidence=0.85,body_threshold=0.35):
     if mode not in ('faces','bodies','mixed'):raise ValueError('Modo de detección no válido.')
     if not 0.5<=confidence<=0.95:raise ValueError('La confianza debe estar entre 0.50 y 0.95.')
-    face,hog=detectors();faces=[];bodies=[]
+    if not 0.1<=body_threshold<=0.95:raise ValueError('La confianza de cuerpos debe estar entre 0.10 y 0.95.')
+    face=detectors()[0] if mode in ('faces','mixed') else None
+    faces=[];bodies=[]
     # Los modelos son compartidos; un candado evita inferencias concurrentes sobre ellos.
     with LOCK:
         if mode in ('faces','mixed'):
@@ -61,9 +63,8 @@ def detect_people(frame,mode,confidence=0.85):
                     right=min(x+w,frame.shape[1]);bottom=min(y+h,frame.shape[0])
                     x=max(0,x);y=max(0,y);w=right-x;h=bottom-y
                     if w>=20 and h>=20:faces.append((x,y,w,h))
-        if mode in ('bodies','mixed') and frame.shape[0]>=128 and frame.shape[1]>=64:
-            rects,weights=hog.detectMultiScale(frame,winStride=(8,8),padding=(8,8),scale=1.05)
-            bodies=suppress([tuple(map(int,r)) for r,weight in zip(rects,weights) if float(weight)>=0.5])
+        if mode in ('bodies','mixed'):
+            bodies=detect_bodies(frame,body_threshold)
     if mode=='faces':return suppress(faces)
     if mode=='bodies':return bodies
     return fuse(faces,bodies)

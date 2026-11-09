@@ -47,7 +47,7 @@ function controls(){
  $('stop').disabled=!(active||preparing||pending)||busy||!!closing;
  $('cancel').disabled=!(active||preparing||pending)||!!closing;
  $('stop').textContent=currentSession?.source==='Imagen'?'Guardar imagen':'Detener y guardar';
- ['title','confidence','capacity','image-button'].forEach(id=>$(id).disabled=active||busy||!!currentSession?.active);
+ ['title','confidence','body-threshold','capacity','image-button'].forEach(id=>{const field=$(id);if(field)field.disabled=active||busy||!!currentSession?.active;});
  $('mode').disabled=busy||!!closing;
  $('mode').setAttribute('aria-describedby','mode-help mode-lock');
  $('mode-lock').hidden=!currentSession?.active;
@@ -59,7 +59,7 @@ function render(data){currentSession=data;$('current').textContent=data.current;
 async function newSession(source,run){sessionMode=$('mode').value;const form=new FormData();form.set('title',$('title').value.trim());form.set('mode',$('mode').value);form.set('capacity',$('capacity').value);form.set('source',source);pendingStart=api('/api/sessions/',form);let data;try{data=await pendingStart;}finally{pendingStart=null;}if(run!==generation){try{const body=new FormData();body.set('discard','1');await api('/api/sessions/'+data.id+'/stop/',body);}catch{}return null;}$('processed').hidden=true;$('processed').removeAttribute('src');$('empty').hidden=false;$('latency').textContent='—';$('speed').textContent='Esperando fotograma';$('duration').textContent='00:00';sequence=0;points=[];chart();started=Date.now();render(data);$('session-state').textContent=data.title;$('source-label').textContent=source==='camera'?'CÁMARA DEL COMPUTADOR':'PRUEBA CON IMAGEN';$('screen-badge').textContent=source==='camera'?'EN DIRECTO':'IMAGEN DE PRUEBA';$('screen-badge').hidden=false;return data;}
 function duration(){const t=Math.floor((Date.now()-started)/1000);$('duration').textContent=String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');}
 async function sendFrame(blob,run,signal=null){
- const id=currentSession.id,body=new FormData();body.set('image',blob,'frame.jpg');body.set('sequence',String(++sequence));body.set('confidence',$('confidence').value||'0.85');
+ const id=currentSession.id,body=new FormData();body.set('image',blob,'frame.jpg');body.set('sequence',String(++sequence));body.set('confidence',$('confidence')?.value||'0.85');body.set('body_threshold',$('body-threshold')?.value||'0.35');
  const data=await api('/api/sessions/'+id+'/frame/',body,signal);
  if(run!==generation||currentSession?.id!==id)return;
  render(data);duration();return data;

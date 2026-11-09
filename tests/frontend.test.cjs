@@ -4,6 +4,16 @@ const vm=require('node:vm');
 const fs=require('node:fs');
 const path=require('node:path');
 
+test('un formulario anterior sin selector de cuerpos puede seguir cargando imágenes',async()=>{
+ let threshold;
+ const app=setup(async(url,options)=>{threshold=options.body.get('body_threshold');return {ok:true,json:async()=>({id:'image',active:true,current:0,capacity:1})};});
+ const get=app.sandbox.document.getElementById;
+ app.sandbox.document.getElementById=id=>id==='body-threshold'?null:get(id);
+ app.run("currentSession={id:'image',active:true};generation=1;controls()");
+ await app.run('sendFrame(new Blob(),1)');
+ assert.equal(threshold,'0.35');
+});
+
 test('al terminar la línea el aviso sale y se oculta; otro aviso reinicia el ciclo',()=>{
  const app=setup(),toast=app.element('notification');
  app.run("notice('Primera alerta')");
