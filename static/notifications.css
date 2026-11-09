@@ -1,0 +1,25 @@
+﻿.notification[hidden]{display:none!important}
+.notification{--notification-accent:#aa6416;position:fixed;top:24px;right:24px;z-index:1000;display:flex;align-items:flex-start;gap:13px;width:min(420px,calc(100vw - 32px));box-sizing:border-box;padding:20px 16px 20px 20px;background:#fff;color:#263333;border:1px solid #e2e7e5;border-left:4px solid var(--notification-accent);border-radius:14px;box-shadow:0 12px 45px #142b3326;animation:notification-enter .2s ease-out;font-family:inherit}
+.notification-success{--notification-accent:#21765b}
+.notification{overflow:hidden}
+.notification::after{content:"";position:absolute;bottom:0;left:0;width:100%;height:2px;background:var(--notification-accent);box-shadow:0 0 7px var(--notification-accent);transform-origin:left;animation:notification-countdown 4s linear forwards}
+.notification:hover::after,.notification:focus-within::after{animation-play-state:paused}
+.notification.notification-leaving{animation:notification-exit .25s ease-in forwards;pointer-events:none}
+.notification.notification-leaving::after{transform:scaleX(0);animation:none}
+.notification-icon{display:grid;place-items:center;flex:0 0 30px;height:30px;background:#fff3df;color:var(--notification-accent);border-radius:50%;font-size:19px;font-weight:700}
+.notification-success .notification-icon{background:#e8f6ef}
+.notification-content{flex:1;min-width:0;padding-top:2px}
+.notification-content strong{font-size:14px;line-height:1.4}
+.notification-content p{margin:7px 0 0;font-size:13px;line-height:1.65;overflow-wrap:anywhere;color:inherit}
+#notification-close{display:grid;place-items:center;flex:0 0 30px;height:30px;padding:0;background:transparent;border:0;border-radius:6px;color:inherit;font-size:24px;cursor:pointer}
+#notification-close:hover{background:#81908a20}
+#notification-close:focus-visible{outline:2px solid var(--notification-accent);outline-offset:2px}
+body[data-theme="midnight"] .notification{background:#172c34;color:#e5efef;border-color:#38505a;border-left-color:var(--notification-accent)}
+body[data-theme="midnight"] .notification-warning{--notification-accent:#f3bf6a}
+body[data-theme="midnight"] .notification-success{--notification-accent:#7ce1bb}
+body[data-theme="midnight"] .notification-icon{background:#ffffff12}
+@keyframes notification-enter{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes notification-countdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@keyframes notification-exit{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(35px)}}
+@media(max-width:600px){.notification{top:12px;right:16px;padding:16px 12px 16px 16px}}
+@media(prefers-reduced-motion:reduce){.notification{animation:none}.notification.notification-leaving{animation:notification-exit .001s linear forwards}@keyframes notification-exit{from{opacity:1}to{opacity:0}}}

@@ -65,6 +65,47 @@ class VisionTests(SimpleTestCase):
             self.assertEqual(detect_people(np.zeros((100,100,3),np.uint8),'faces'),[])
 
 class APITests(TestCase):
+    def test_image_appears_in_history_only_after_saving(self):
+        pk=self.new().json()['id']
+        self.frame(pk)
+        self.assertEqual(self.client.get('/api/history/').json()['sessions'],[])
+        self.client.post(f'/api/sessions/{pk}/stop/')
+        self.assertEqual(len(self.client.get('/api/history/').json()['sessions']),1)
+
+    def test_discard_removes_session_and_samples(self):
+        pk=self.new().json()['id']
+        self.frame(pk)
+        self.assertEqual(CountSample.objects.count(),1)
+        other=Client()
+        self.assertEqual(other.post(f'/api/sessions/{pk}/stop/',{'discard':'1'}).status_code,404)
+        response=self.client.post(f'/api/sessions/{pk}/stop/',{'discard':'1'})
+        self.assertTrue(response.json()['discarded'])
+        self.assertFalse(CountSession.objects.filter(pk=pk).exists())
+        self.assertEqual(CountSample.objects.count(),0)
+        self.assertEqual(self.client.get('/api/history/').json()['sessions'],[])
+
+    def test_cancel_during_detection_returns_conflict(self):
+        pk=self.new().json()['id']
+        def cancel(*args):
+            CountSession.objects.filter(pk=pk).delete()
+            return []
+        with patch('counter.views.detect_people',side_effect=cancel):
+            self.assertEqual(self.frame(pk).status_code,409)
+
+    def test_invalid_confidence_does_not_save_a_sample(self):
+        pk=self.new().json()['id']
+        for value in ['nan','bad','0.1','1.1']:
+            response=self.client.post(f'/api/sessions/{pk}/frame/',{'sequence':1,'image':file(),'confidence':value})
+            self.assertEqual(response.status_code,400)
+        self.assertEqual(CountSample.objects.count(),0)
+
+    def test_custom_confidence_reaches_detector(self):
+        pk=self.new().json()['id']
+        with patch('counter.views.detect_people',return_value=[]) as detector:
+            response=self.client.post(f'/api/sessions/{pk}/frame/',{'sequence':1,'image':file(),'confidence':'0.70'})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(detector.call_args.args[2],0.70)
+
     def new(self,client=None,**kwargs):
         client=client or self.client
         return client.post('/api/sessions/',{'title':'Laboratorio P','mode':'faces','source':'image','capacity':2,**kwargs})

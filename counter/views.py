@@ -11,6 +11,7 @@ from django.views.decorators.http import require_GET,require_POST
 from .models import CountSession,CountSample
 from .tracking import update_tracks
 from .vision import decode_frame,detect_people,annotate,MAX_UPLOAD
+from pathlib import Path
 def database_errors(view):
     @wraps(view)
     def wrapped(*args,**kwargs):
@@ -24,7 +25,11 @@ def serialized(s):
     return {'id':str(s.pk),'title':s.title,'mode':s.get_mode_display(),'source':s.get_source_display(),'capacity':s.capacity,'started_at':s.started_at.isoformat(),'ended_at':s.ended_at.isoformat() if s.ended_at else None,'frames':s.frame_count,'current':s.current_count,'peak':s.peak_count,'active':s.ended_at is None,'tracks':max(0,s.state.get('next_id',1)-1)}
 @require_GET
 @ensure_csrf_cookie
-def index(request):return render(request,'index.html')
+def index(request):
+    version=(Path(__file__).resolve().parent.parent/'static'/'app.js').stat().st_mtime_ns
+    response=render(request,'index.html',{'asset_version':str(version)})
+    response['Cache-Control']='no-store'
+    return response
 @require_POST
 @database_errors
 def start(request):
@@ -56,12 +61,15 @@ def frame(request,pk):
     if upload.size>MAX_UPLOAD:return JsonResponse({'error':'La imagen supera 2 MB.'},status=413)
     begin=time.perf_counter()
     try:
-        image=decode_frame(upload.read());boxes=detect_people(image,s.mode)
+        confidence=float(request.POST.get('confidence','0.85'))
+        image=decode_frame(upload.read(),1280,960) if s.source=='image' else decode_frame(upload.read())
+        boxes=detect_people(image,s.mode,confidence)
     except ValueError as error:return JsonResponse({'error':str(error)},status=400)
     except (cv2.error,RuntimeError):return JsonResponse({'error':'No se pudo ejecutar el detector. Revise el modelo y la instalación de OpenCV.'},status=503)
     now=timezone.now()
     with transaction.atomic():
-        s=CountSession.objects.select_for_update().get(pk=s.pk)
+        s=CountSession.objects.select_for_update().filter(pk=s.pk).first()
+        if s is None:return JsonResponse({'error':'La sesión fue cancelada.'},status=409)
         if s.ended_at or sequence<=s.sequence:return JsonResponse({'error':'Sesión cerrada o fotograma ya procesado.'},status=409)
         identifiers,state=update_tracks(boxes,s.state,now.timestamp(),max_distance=max(35,image.shape[1]*0.15))
         try:output=annotate(image,boxes,identifiers,s.capacity)
@@ -85,13 +93,16 @@ def stop(request,pk):
     with transaction.atomic():
         s=CountSession.objects.select_for_update().filter(pk=pk,browser_key=key).first() if key else None
         if s is None:return JsonResponse({'error':'Sesión no encontrada.'},status=404)
+        if request.POST.get('discard')=='1':
+            s.delete()
+            return JsonResponse({'discarded':True})
         if s.ended_at is None:s.ended_at=timezone.now();s.save(update_fields=['ended_at'])
     return JsonResponse(serialized(s))
 @require_GET
 @database_errors
 def history(request):
     key=request.session.session_key
-    sessions=CountSession.objects.filter(browser_key=key)[:100] if key else []
+    sessions=CountSession.objects.filter(browser_key=key).exclude(source='image',ended_at__isnull=True)[:100] if key else []
     return JsonResponse({'sessions':[serialized(s) for s in sessions]})
 @require_GET
 @database_errors

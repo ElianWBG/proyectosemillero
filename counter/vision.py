@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image,UnidentifiedImageError
 LOCK=Lock()
 MAX_UPLOAD=2*1024*1024
-def decode_frame(content):
+def decode_frame(content,max_width=640,max_height=480):
     if not content or len(content)>MAX_UPLOAD:raise ValueError('La imagen debe ocupar entre 1 byte y 2 MB.')
     try:
         with Image.open(io.BytesIO(content)) as image:
@@ -20,7 +20,7 @@ def decode_frame(content):
         raise ValueError('El archivo no contiene una imagen válida.') from error
     frame=cv2.imdecode(np.frombuffer(content,np.uint8),cv2.IMREAD_COLOR)
     if frame is None:raise ValueError('No se pudo decodificar la imagen.')
-    scale=min(1.0,640/frame.shape[1],480/frame.shape[0])
+    scale=min(1.0,max_width/frame.shape[1],max_height/frame.shape[0])
     if scale<1:frame=cv2.resize(frame,None,fx=scale,fy=scale,interpolation=cv2.INTER_AREA)
     return frame
 @lru_cache(maxsize=1)
@@ -45,12 +45,14 @@ def fuse(faces,bodies):
         cx,cy=x+w/2,y+h/2
         if not any(bx<=cx<=bx+bw and by<=cy<=by+bh for bx,by,bw,bh in bodies):result.append((x,y,w,h))
     return suppress(result)
-def detect_people(frame,mode):
+def detect_people(frame,mode,confidence=0.85):
     if mode not in ('faces','bodies','mixed'):raise ValueError('Modo de detección no válido.')
+    if not 0.5<=confidence<=0.95:raise ValueError('La confianza debe estar entre 0.50 y 0.95.')
     face,hog=detectors();faces=[];bodies=[]
     # Los modelos son compartidos; un candado evita inferencias concurrentes sobre ellos.
     with LOCK:
         if mode in ('faces','mixed'):
+            face.setScoreThreshold(confidence)
             face.setInputSize((frame.shape[1],frame.shape[0]))
             _,detections=face.detect(frame)
             if detections is not None:
