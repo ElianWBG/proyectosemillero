@@ -64,7 +64,8 @@ def frame(request,pk):
         confidence=float(request.POST.get('confidence','0.85'))
         body_threshold=float(request.POST.get('body_threshold','0.35'))
         image=decode_frame(upload.read(),1280,960) if s.source=='image' else decode_frame(upload.read())
-        boxes=detect_people(image,s.mode,confidence,body_threshold)
+        details={}
+        boxes=detect_people(image,s.mode,confidence,body_threshold,details=details)
     except ValueError as error:return JsonResponse({'error':str(error)},status=400)
     except (cv2.error,RuntimeError):return JsonResponse({'error':'No se pudo ejecutar el detector. Revise el modelo y la instalación de OpenCV.'},status=503)
     now=timezone.now()
@@ -73,7 +74,7 @@ def frame(request,pk):
         if s is None:return JsonResponse({'error':'La sesión fue cancelada.'},status=409)
         if s.ended_at or sequence<=s.sequence:return JsonResponse({'error':'Sesión cerrada o fotograma ya procesado.'},status=409)
         identifiers,state=update_tracks(boxes,s.state,now.timestamp(),max_distance=max(35,image.shape[1]*0.15))
-        try:output=annotate(image,boxes,identifiers,s.capacity)
+        try:output=annotate(image,boxes,identifiers,s.capacity,details=details if s.mode=='mixed' else None)
         except (cv2.error,RuntimeError):
             return JsonResponse({'error':'No se pudo preparar la imagen de resultado. Intente nuevamente.'},status=503)
         ms=round((time.perf_counter()-begin)*1000)
@@ -85,7 +86,7 @@ def frame(request,pk):
         s.save(update_fields=['current_count','peak_count','frame_count','sequence','state'])
         if save_sample:CountSample.objects.create(session=s,count=len(boxes),processing_ms=ms)
     response=serialized(s)
-    response.update({'image':'data:image/jpeg;base64,'+base64.b64encode(output).decode(),'processing_ms':ms,'ids':identifiers,'over_capacity':len(boxes)>s.capacity})
+    response.update({'image':'data:image/jpeg;base64,'+base64.b64encode(output).decode(),'processing_ms':ms,'ids':identifiers,'over_capacity':len(boxes)>s.capacity,'detections':{'faces':len(details.get('faces',[])),'bodies':len(details.get('bodies',[]))}})
     return JsonResponse(response)
 @require_POST
 @database_errors

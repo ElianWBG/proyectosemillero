@@ -63,7 +63,7 @@ def fuse(faces,bodies):
         if fi not in matched_faces and bi not in matched_bodies:
             matched_faces.add(fi);matched_bodies.add(bi)
     return list(bodies)+[box for i,box in enumerate(faces) if i not in matched_faces]
-def detect_people(frame,mode,confidence=0.85,body_threshold=0.35):
+def detect_people(frame,mode,confidence=0.85,body_threshold=0.35,details=None):
     if mode not in ('faces','bodies','mixed'):raise ValueError('Modo de detección no válido.')
     if not 0.5<=confidence<=0.95:raise ValueError('La confianza debe estar entre 0.50 y 0.95.')
     if not 0.1<=body_threshold<=0.95:raise ValueError('La confianza de cuerpos debe estar entre 0.10 y 0.95.')
@@ -83,17 +83,29 @@ def detect_people(frame,mode,confidence=0.85,body_threshold=0.35):
                     if w>=20 and h>=20:faces.append((x,y,w,h))
         if mode in ('bodies','mixed'):
             bodies=detect_bodies(frame,body_threshold)
-    if mode=='faces':return suppress(faces)
+    faces=suppress(faces)
+    if details is not None:details.update(faces=faces,bodies=bodies)
+    if mode=='faces':return faces
     if mode=='bodies':return bodies
     return fuse(faces,bodies)
-def annotate(frame,boxes,identifiers,capacity):
+def annotate(frame,boxes,identifiers,capacity,details=None):
     image=frame.copy()
+    mixed=details is not None
+    faces=details.get('faces',[]) if mixed else []
+    bodies=details.get('bodies',[]) if mixed else []
     for (x,y,w,h),identifier in zip(boxes,identifiers):
-        cv2.rectangle(image,(x,y),(x+w,y+h),(88,220,165),2)
-        cv2.putText(image,f'Persona #{identifier:03}',(x,max(20,y-8)),cv2.FONT_HERSHEY_SIMPLEX,0.55,(88,220,165),2)
+        if mixed and (x,y,w,h) not in bodies:continue
+        cv2.rectangle(image,(x,y),(x+w,y+h),(80,210,90),2)
+        cv2.putText(image,f'Persona #{identifier:03}',(x,max(50 if mixed else 20,y-8)),cv2.FONT_HERSHEY_SIMPLEX,0.55,(80,210,90),2)
+    for x,y,w,h in faces:
+        cv2.rectangle(image,(x,y),(x+w,y+h),(220,220,40),2)
+        cv2.putText(image,'Rostro',(x,min(image.shape[0]-5,y+h+16)),cv2.FONT_HERSHEY_SIMPLEX,0.45,(220,220,40),1)
     over=len(boxes)>capacity
     cv2.rectangle(image,(0,0),(image.shape[1],36),(24,36,49),-1)
     cv2.putText(image,f'VISIBLES: {len(boxes)} | LIMITE: {capacity}'+(' | LIMITE SUPERADO' if over else ''),(10,24),cv2.FONT_HERSHEY_SIMPLEX,0.52,(100,160,255) if over else (230,245,240),1)
+    if mixed:
+        cv2.rectangle(image,(0,36),(image.shape[1],58),(24,36,49),-1)
+        cv2.putText(image,f'CUERPOS: {len(bodies)} | ROSTROS: {len(faces)} | CONTEO SIN DUPLICADOS',(8,51),cv2.FONT_HERSHEY_SIMPLEX,0.36,(220,220,40),1)
     success,data=cv2.imencode('.jpg',image,[cv2.IMWRITE_JPEG_QUALITY,80])
     if not success:raise RuntimeError('No se pudo preparar el fotograma de salida.')
     return data.tobytes()

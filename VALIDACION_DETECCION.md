@@ -32,6 +32,11 @@ detectar todas las personas en otras fotografías o entregar video fluido en CPU
 
 ### Combinación en modo Mixto
 
+La imagen anotada muestra cuerpos en verde y todos los rostros detectados en
+turquesa, aunque un rostro esté asociado a un cuerpo. Los recuadros de ambos
+detectores no se suman para obtener el conteo. La API devuelve también sus
+cantidades independientes en `detections.faces` y `detections.bodies`.
+
 Se conserva la selección de personas de YOLOX sin aplicar otra supresión por
 solapamiento: dos personas cercanas pueden tener recuadros superpuestos.
 Los rostros se asocian uno a uno con la zona superior de las personas, admitiendo

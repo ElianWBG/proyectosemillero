@@ -59,6 +59,20 @@ class TrackingTests(SimpleTestCase):
         self.assertEqual(len(suppress([(10,10,100,100),(12,12,100,100)])),1)
 
 class VisionTests(SimpleTestCase):
+    def test_mixed_retains_raw_faces_and_bodies_without_double_count(self):
+        face=MagicMock()
+        face.detect.return_value=(None,np.array([[40,70,30,30]],dtype=np.float32))
+        details={}
+        with patch('counter.vision.detectors',return_value=(face,None)),patch('counter.vision.detect_bodies',return_value=[(20,60,100,170)]):
+            boxes=detect_people(np.zeros((240,320,3),np.uint8),'mixed',details=details)
+        self.assertEqual(len(boxes),1)
+        self.assertEqual(details,{'faces':[(40,70,30,30)],'bodies':[(20,60,100,170)]})
+        from .vision import annotate
+        result=cv2.imdecode(np.frombuffer(annotate(np.zeros((240,320,3),np.uint8),boxes,[1],20,details),np.uint8),cv2.IMREAD_COLOR)
+        # Both independently colored outlines remain visible in the same image.
+        np.testing.assert_allclose(result[120,20],[80,210,90],atol=35)
+        np.testing.assert_allclose(result[85,40],[220,220,40],atol=35)
+
     def test_body_scores_filter_people_and_map_coordinates(self):
         from .body_detection import decode_people
         predictions=np.zeros((1,8400,85),dtype=np.float32)
@@ -103,6 +117,19 @@ class VisionTests(SimpleTestCase):
             self.assertEqual(detect_people(np.zeros((100,100,3),np.uint8),'faces'),[])
 
 class APITests(TestCase):
+    def test_mixed_reports_both_detectors_but_saves_unique_people(self):
+        pk=self.new(mode='mixed').json()['id']
+        def detected(*args,details,**kwargs):
+            details.update(faces=[(40,70,30,30)],bodies=[(20,60,100,170)])
+            return [(20,60,100,170)]
+        with patch('counter.views.detect_people',side_effect=detected):
+            response=self.frame(pk)
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.json()['detections'],{'faces':1,'bodies':1})
+        self.assertEqual(response.json()['current'],1)
+        self.assertEqual(CountSession.objects.get(pk=pk).current_count,1)
+        self.assertEqual(CountSample.objects.get(session_id=pk).count,1)
+
     def test_image_appears_in_history_only_after_saving(self):
         pk=self.new().json()['id']
         self.frame(pk)
@@ -124,7 +151,7 @@ class APITests(TestCase):
 
     def test_cancel_during_detection_returns_conflict(self):
         pk=self.new().json()['id']
-        def cancel(*args):
+        def cancel(*args,**kwargs):
             CountSession.objects.filter(pk=pk).delete()
             return []
         with patch('counter.views.detect_people',side_effect=cancel):
