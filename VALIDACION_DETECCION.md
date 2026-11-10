@@ -30,6 +30,20 @@ detectar todas las personas en otras fotografías o entregar video fluido en CPU
 
 ## Controles y pruebas
 
+### Combinación en modo Mixto
+
+Se conserva la selección de personas de YOLOX sin aplicar otra supresión por
+solapamiento: dos personas cercanas pueden tener recuadros superpuestos.
+Los rostros se asocian uno a uno con la zona superior de las personas, admitiendo
+cabezas parcialmente fuera del recuadro. Los rostros sin asociación se añaden
+al resultado; estar dentro de un recuadro a la altura de piernas no basta para
+eliminarlos. Esta asociación geométrica es una heurística y puede fallar en
+escenas complejas; no representa identificación biométrica.
+
+Se añadieron pruebas para personas superpuestas, múltiples rostros en un mismo
+recuadro, rostro independiente, rostro a altura de piernas y cabeza parcialmente
+fuera del recuadro. Mixto conserva 4 detecciones en bus.jpg y 2 en zidane.jpg.
+
 - Confianza de personas: 35% inicial, 20% sensible, 10% exploratoria, 60% estricta.
 - La confianza de rostros continúa siendo independiente.
 - Pruebas del decodificador: clase persona, filtrado por confianza, eliminación

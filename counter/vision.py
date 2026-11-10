@@ -40,11 +40,29 @@ def suppress(boxes,threshold=0.35):
         if all(iou(box,other)<threshold for other in result):result.append(box)
     return result
 def fuse(faces,bodies):
-    result=list(bodies)
-    for x,y,w,h in faces:
+    """Associate one face per person's head region, retaining YOLOX's own NMS.
+
+    A face elsewhere inside a large person box can belong to another person.
+    Never suppress already accepted person boxes a second time: overlapping
+    people are valid separate detections.
+    """
+    faces=suppress(faces)
+    candidates=[]
+    for fi,(x,y,w,h) in enumerate(faces):
         cx,cy=x+w/2,y+h/2
-        if not any(bx<=cx<=bx+bw and by<=cy<=by+bh for bx,by,bw,bh in bodies):result.append((x,y,w,h))
-    return suppress(result)
+        for bi,(bx,by,bw,bh) in enumerate(bodies):
+            overlap=max(0,min(x+w,bx+bw)-max(x,bx))*max(0,min(y+h,by+bh)-max(y,by))
+            coverage=overlap/(w*h) if w*h else 0
+            # Allow heads slightly above a clipped person box, but not faces
+            # at torso/leg height or merely touching its horizontal edge.
+            if bx<=cx<=bx+bw and by-0.75*h<=cy<=by+0.5*bh and coverage>=0.35:
+                distance=abs(cx-(bx+bw/2))/max(bw,1)+abs(cy-(by+0.15*bh))/max(bh,1)
+                candidates.append((distance,fi,bi))
+    matched_faces=set();matched_bodies=set()
+    for _,fi,bi in sorted(candidates):
+        if fi not in matched_faces and bi not in matched_bodies:
+            matched_faces.add(fi);matched_bodies.add(bi)
+    return list(bodies)+[box for i,box in enumerate(faces) if i not in matched_faces]
 def detect_people(frame,mode,confidence=0.85,body_threshold=0.35):
     if mode not in ('faces','bodies','mixed'):raise ValueError('Modo de detección no válido.')
     if not 0.5<=confidence<=0.95:raise ValueError('La confianza debe estar entre 0.50 y 0.95.')

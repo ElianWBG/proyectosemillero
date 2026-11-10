@@ -17,6 +17,23 @@ def blank():
 def file(content=None):return SimpleUploadedFile('frame.jpg',content or blank(),content_type='image/jpeg')
 
 class TrackingTests(SimpleTestCase):
+    def test_mixed_keeps_distinct_overlapping_people(self):
+        bodies=[(0,0,100,200),(35,0,100,200)]
+        self.assertEqual(fuse([],bodies),bodies)
+        self.assertEqual(len(fuse([(10,10,20,20),(100,10,20,20)],bodies)),2)
+
+    def test_mixed_does_not_hide_another_face_at_leg_height(self):
+        self.assertEqual(len(fuse([(35,150,20,20)],[(10,0,80,200)])),2)
+
+    def test_mixed_matches_only_one_face_per_person_box(self):
+        self.assertEqual(len(fuse([(20,10,20,20),(70,10,20,20)],[(0,0,120,200)])),2)
+
+    def test_mixed_matches_head_partly_above_person_box(self):
+        self.assertEqual(len(fuse([(30,0,30,40)],[(10,20,80,160)])),1)
+
+    def test_mixed_preserves_standalone_face(self):
+        self.assertEqual(len(fuse([(180,10,30,30)],[(0,0,100,200)])),2)
+
     def test_same_person_keeps_identifier(self):
         ids,state=update_tracks([(10,10,30,30)],{},100)
         next_ids,_=update_tracks([(15,15,30,30)],state,100.25)
