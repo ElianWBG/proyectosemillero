@@ -1,5 +1,4 @@
 # VisorLab
-
 Conteo de personas con Django, OpenCV y PostgreSQL.
 
 ## Ejecutar con Docker
